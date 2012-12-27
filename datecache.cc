@@ -29,7 +29,7 @@ extern "C" {
 #include <sys/time.h>
 }
 #include <cmath>
-#include "datecache.h"
+#include "esdateparser-int/datecache.h"
 
 namespace esDateParser {
 
