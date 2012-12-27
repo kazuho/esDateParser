@@ -1,3 +1,6 @@
+// Copyright 2012 DeNA Co., Ltd.
+// modified under the following, original copyright
+
 // Copyright 2011 the V8 project authors. All rights reserved.
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -25,20 +28,16 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef V8_DATEPARSER_INL_H_
-#define V8_DATEPARSER_INL_H_
+#ifndef ESDATEPARSER_DATEPARSER_INL_H
+#define ESDATEPARSER_DATEPARSER_INL_H
 
-#include "dateparser.h"
-
-namespace v8 {
-namespace internal {
+namespace esDateParser {
 
 template <typename Char>
-bool DateParser::Parse(Vector<Char> str,
-                       FixedArray* out,
-                       UnicodeCache* unicode_cache) {
-  ASSERT(out->length() >= OUTPUT_SIZE);
-  InputReader<Char> in(unicode_cache, str);
+bool DateParser::Parse(const Char* str,
+                       size_t length,
+                       Date* out) {
+  InputReader<Char> in(str, length);
   DateStringTokenizer<Char> scanner(&in);
   TimeZoneComposer tz;
   TimeComposer time;
@@ -194,7 +193,7 @@ DateParser::DateToken DateParser::DateStringTokenizer<CharType>::Scan() {
   if (in_->Skip('.')) return DateToken::Symbol('.');
   if (in_->Skip(')')) return DateToken::Symbol(')');
   if (in_->IsAsciiAlphaOrAbove()) {
-    ASSERT(KeywordTable::kPrefixLength == 3);
+    assert(KeywordTable::kPrefixLength == 3);
     uint32_t buffer[3] = {0, 0, 0};
     int length = in_->ReadWord(buffer, 3);
     int index = KeywordTable::Lookup(buffer, length);
@@ -219,9 +218,9 @@ DateParser::DateToken DateParser::ParseES5DateTime(
     DayComposer* day,
     TimeComposer* time,
     TimeZoneComposer* tz) {
-  ASSERT(day->IsEmpty());
-  ASSERT(time->IsEmpty());
-  ASSERT(tz->IsEmpty());
+  assert(day->IsEmpty());
+  assert(time->IsEmpty());
+  assert(tz->IsEmpty());
 
   // Parse mandatory date string: [('-'|'+')yy]yyyy[':'MM[':'DD]]
   if (scanner->Peek().IsAsciiSign()) {
@@ -325,6 +324,6 @@ DateParser::DateToken DateParser::ParseES5DateTime(
 }
 
 
-} }  // namespace v8::internal
+}
 
-#endif  // V8_DATEPARSER_INL_H_
+#endif

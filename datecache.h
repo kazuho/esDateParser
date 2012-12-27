@@ -25,16 +25,22 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef V8_DATE_H_
-#define V8_DATE_H_
+#ifndef ESDATEPARSER_DATECACHE_H
+#define ESDATEPARSER_DATECACHE_H
 
-#include "allocation.h"
-#include "globals.h"
-#include "platform.h"
+#include <cassert>
+#include <climits>
+extern "C" {
+#include <stdint.h>
+}
 
+namespace esDateParser {
 
-namespace v8 {
-namespace internal {
+struct OS {
+  static const char* LocalTimezone(double time);
+  static double DaylightSavingsOffset(double time);
+  static double LocalTimeOffset();
+};
 
 class DateCache {
  public:
@@ -43,9 +49,9 @@ class DateCache {
   static const int64_t kMsPerDay = kSecPerDay * 1000;
 
   // The largest time that can be passed to OS date-time library functions.
-  static const int kMaxEpochTimeInSec = kMaxInt;
+  static const int kMaxEpochTimeInSec = INT_MAX;
   static const int64_t kMaxEpochTimeInMs =
-      static_cast<int64_t>(kMaxInt) * 1000;
+      static_cast<int64_t>(INT_MAX) * 1000;
 
   // The largest time that can be stored in JSDate.
   static const int64_t kMaxTimeInMs =
@@ -57,7 +63,7 @@ class DateCache {
       kMaxTimeInMs + 10 * kMsPerDay;
 
   // Sentinel that denotes an invalid local offset.
-  static const int kInvalidLocalOffsetInMs = kMaxInt;
+  static const int kInvalidLocalOffsetInMs = INT_MAX;
   // Sentinel that denotes an invalid cache stamp.
   // It is an invariant of DateCache that cache stamp is non-negative.
   static const int kInvalidStamp = -1;
@@ -176,8 +182,7 @@ class DateCache {
   // We increment the stamp each time when the timezone information changes.
   // JSDate objects perform stamp check and invalidate their caches if
   // their saved stamp is not equal to the current stamp.
-  Smi* stamp() { return stamp_; }
-  void* stamp_address() { return &stamp_; }
+  int stamp() { return stamp_; }
 
   // These functions are virtual so that we can override them when testing.
   virtual int GetDaylightSavingsOffsetFromOS(int64_t time_sec) {
@@ -187,7 +192,7 @@ class DateCache {
 
   virtual int GetLocalOffsetFromOS() {
     double offset = OS::LocalTimeOffset();
-    ASSERT(offset < kInvalidLocalOffsetInMs);
+    assert(offset < kInvalidLocalOffsetInMs);
     return static_cast<int>(offset);
   }
 
@@ -237,7 +242,7 @@ class DateCache {
     return segment->start_sec > segment->end_sec;
   }
 
-  Smi* stamp_;
+  int stamp_;
 
   // Daylight Saving Time cache.
   DST dst_[kDSTSize];
@@ -255,6 +260,6 @@ class DateCache {
   int ymd_day_;
 };
 
-} }   // namespace v8::internal
+}
 
 #endif

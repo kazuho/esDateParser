@@ -1,3 +1,6 @@
+// Copyright 2012 DeNA Co., Ltd.
+// modified under the following, original copyright
+
 // Copyright 2011 the V8 project authors. All rights reserved.
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -25,14 +28,15 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "v8.h"
-
 #include "dateparser.h"
 
-namespace v8 {
-namespace internal {
+namespace esDateParser {
 
-bool DateParser::DayComposer::Write(FixedArray* output) {
+inline bool isValidSMI(int v) {
+	return (unsigned)v + 0x40000000U < 0x80000000U;
+}
+
+bool DateParser::DayComposer::Write(Date* output) {
   if (index_ < 1) return false;
   // Day and month defaults to 1.
   while (index_ < kSize) {
@@ -76,16 +80,16 @@ bool DateParser::DayComposer::Write(FixedArray* output) {
     else if (Between(year, 50, 99)) year += 1900;
   }
 
-  if (!Smi::IsValid(year) || !IsMonth(month) || !IsDay(day)) return false;
+  if (!isValidSMI(year) || !IsMonth(month) || !IsDay(day)) return false;
 
-  output->set(YEAR, Smi::FromInt(year));
-  output->set(MONTH, Smi::FromInt(month - 1));  // 0-based
-  output->set(DAY, Smi::FromInt(day));
+  output->year = year;
+  output->month = month - 1;  // 0-based
+  output->day = day;
   return true;
 }
 
 
-bool DateParser::TimeComposer::Write(FixedArray* output) {
+bool DateParser::TimeComposer::Write(Date* output) {
   // All time slots default to 0
   while (index_ < kSize) {
     comp_[index_++] = 0;
@@ -105,22 +109,22 @@ bool DateParser::TimeComposer::Write(FixedArray* output) {
   if (!IsHour(hour) || !IsMinute(minute) ||
       !IsSecond(second) || !IsMillisecond(millisecond)) return false;
 
-  output->set(HOUR, Smi::FromInt(hour));
-  output->set(MINUTE, Smi::FromInt(minute));
-  output->set(SECOND, Smi::FromInt(second));
-  output->set(MILLISECOND, Smi::FromInt(millisecond));
+  output->hour = hour;
+  output->minute = minute;
+  output->second = second;
+  output->millisecond = millisecond;
   return true;
 }
 
-bool DateParser::TimeZoneComposer::Write(FixedArray* output) {
+bool DateParser::TimeZoneComposer::Write(Date* output) {
   if (sign_ != kNone) {
     if (hour_ == kNone) hour_ = 0;
     if (minute_ == kNone) minute_ = 0;
     int total_seconds = sign_ * (hour_ * 3600 + minute_ * 60);
-    if (!Smi::IsValid(total_seconds)) return false;
-    output->set(UTC_OFFSET, Smi::FromInt(total_seconds));
+    if (!isValidSMI(total_seconds)) return false;
+    output->utc_offset = total_seconds;
   } else {
-    output->set_null(UTC_OFFSET);
+    output->utc_offset = -1;
   }
   return true;
 }
@@ -199,7 +203,7 @@ int DateParser::ReadMilliseconds(DateToken token) {
     // most significant digits.
     int factor = 1;
     do {
-      ASSERT(factor <= 100000000);  // factor won't overflow.
+      assert(factor <= 100000000);  // factor won't overflow.
       factor *= 10;
       length--;
     } while (length > 3);
@@ -209,4 +213,4 @@ int DateParser::ReadMilliseconds(DateToken token) {
 }
 
 
-} }  // namespace v8::internal
+}

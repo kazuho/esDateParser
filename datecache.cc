@@ -25,15 +25,41 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "date.h"
+extern "C" {
+#include <sys/time.h>
+}
+#include <cmath>
+#include "datecache.h"
 
-#include "v8.h"
+namespace esDateParser {
 
-#include "objects.h"
-#include "objects-inl.h"
+// the following three OS:: functions were taken from the same version of V8
+const char* OS::LocalTimezone(double time)
+{
+  if (std::isnan(time)) return "";
+  time_t tv = static_cast<time_t>(floor(time/1000.0));
+  struct tm* t = localtime(&tv);
+  if (NULL == t) return "";
+  return t->tm_zone;
+}
 
-namespace v8 {
-namespace internal {
+double OS::DaylightSavingsOffset(double time)
+{
+  if (std::isnan(time)) return NAN;
+  time_t tv = static_cast<time_t>(floor(time/1000.0));
+  struct tm* t = localtime(&tv);
+  if (NULL == t) return NAN;
+  return t->tm_isdst > 0 ? 3600000.0 : 0;
+}
+
+double OS::LocalTimeOffset()
+{
+  time_t tv = time(NULL);
+  struct tm* t = localtime(&tv);
+  // tm_gmtoff includes any daylight savings offset, so subtract it.
+  return static_cast<double>(t->tm_gmtoff * 1000.0 -
+                             (t->tm_isdst > 0 ? 3600000.0 : 0));
+}
 
 
 static const int kDays4Years[] = {0, 365, 2 * 365, 3 * 365 + 1};
@@ -49,12 +75,12 @@ static const char kDaysInMonths[] =
 
 
 void DateCache::ResetDateCache() {
-  static const int kMaxStamp = Smi::kMaxValue;
-  stamp_ = Smi::FromInt(stamp_->value() + 1);
-  if (stamp_->value() > kMaxStamp) {
-    stamp_ = Smi::FromInt(0);
+  static const int kMaxStamp = 0x40000000;
+  ++stamp_;
+  if (stamp_ > kMaxStamp) {
+    stamp_ = 0;
   }
-  ASSERT(stamp_ != Smi::FromInt(kInvalidStamp));
+  assert(stamp_ != kInvalidStamp);
   for (int i = 0; i < kDSTSize; ++i) {
     ClearSegment(&dst_[i]);
   }
@@ -95,7 +121,7 @@ void DateCache::YearMonthDayFromDays(
   *year = 400 * (days / kDaysIn400Years) - kYearsOffset;
   days %= kDaysIn400Years;
 
-  ASSERT(DaysFromYearMonth(*year, 0) + days == save_days);
+  assert(DaysFromYearMonth(*year, 0) + days == save_days);
 
   days--;
   int yd1 = days / kDaysIn100Years;
@@ -115,12 +141,12 @@ void DateCache::YearMonthDayFromDays(
 
   bool is_leap = (!yd1 || yd2) && !yd3;
 
-  ASSERT(days >= -1);
-  ASSERT(is_leap || (days >= 0));
-  ASSERT((days < 365) || (is_leap && (days < 366)));
-  ASSERT(is_leap == ((*year % 4 == 0) && (*year % 100 || (*year % 400 == 0))));
-  ASSERT(is_leap || ((DaysFromYearMonth(*year, 0) + days) == save_days));
-  ASSERT(!is_leap || ((DaysFromYearMonth(*year, 0) + days + 1) == save_days));
+  assert(days >= -1);
+  assert(is_leap || (days >= 0));
+  assert((days < 365) || (is_leap && (days < 366)));
+  assert(is_leap == ((*year % 4 == 0) && (*year % 100 || (*year % 400 == 0))));
+  assert(is_leap || ((DaysFromYearMonth(*year, 0) + days) == save_days));
+  assert(!is_leap || ((DaysFromYearMonth(*year, 0) + days + 1) == save_days));
 
   days += is_leap;
 
@@ -146,7 +172,7 @@ void DateCache::YearMonthDayFromDays(
       *day = days - 31 + 1;
     }
   }
-  ASSERT(DaysFromYearMonth(*year, *month) + *day - 1 == save_days);
+  assert(DaysFromYearMonth(*year, *month) + *day - 1 == save_days);
   ymd_valid_ = true;
   ymd_year_ = *year;
   ymd_month_ = *month;
@@ -168,8 +194,8 @@ int DateCache::DaysFromYearMonth(int year, int month) {
     month += 12;
   }
 
-  ASSERT(month >= 0);
-  ASSERT(month < 12);
+  assert(month >= 0);
+  assert(month < 12);
 
   // year_delta is an arbitrary number such that:
   // a) year_delta = -1 (mod 400)
@@ -227,7 +253,7 @@ int DateCache::DaylightSavingsOffsetInMs(int64_t time_ms) {
   // Invalidate cache if the usage counter is close to overflow.
   // Note that dst_usage_counter is incremented less than ten times
   // in this function.
-  if (dst_usage_counter_ >= kMaxInt - 10) {
+  if (dst_usage_counter_ >= INT_MAX - 10) {
     dst_usage_counter_ = 0;
     for (int i = 0; i < kDSTSize; ++i) {
       ClearSegment(&dst_[i]);
@@ -244,8 +270,8 @@ int DateCache::DaylightSavingsOffsetInMs(int64_t time_ms) {
 
   ProbeDST(time_sec);
 
-  ASSERT(InvalidSegment(before_) || before_->start_sec <= time_sec);
-  ASSERT(InvalidSegment(after_) || time_sec < after_->start_sec);
+  assert(InvalidSegment(before_) || before_->start_sec <= time_sec);
+  assert(InvalidSegment(after_) || time_sec < after_->start_sec);
 
   if (InvalidSegment(before_)) {
     // Cache miss.
@@ -286,7 +312,7 @@ int DateCache::DaylightSavingsOffsetInMs(int64_t time_ms) {
     int new_offset_ms = GetDaylightSavingsOffsetFromOS(new_after_start_sec);
     ExtendTheAfterSegment(new_after_start_sec, new_offset_ms);
   } else {
-    ASSERT(!InvalidSegment(after_));
+    assert(!InvalidSegment(after_));
     // Update the usage counter of after_ since it is going to be used.
     after_->last_used = ++dst_usage_counter_;
   }
@@ -313,7 +339,7 @@ int DateCache::DaylightSavingsOffsetInMs(int64_t time_ms) {
         return offset_ms;
       }
     } else {
-      ASSERT(after_->offset_ms == offset_ms);
+      assert(after_->offset_ms == offset_ms);
       after_->start_sec = middle_sec;
       if (time_sec >= after_->start_sec) {
         // This swap helps the optimistic fast check in subsequent invocations.
@@ -324,7 +350,7 @@ int DateCache::DaylightSavingsOffsetInMs(int64_t time_ms) {
       }
     }
   }
-  UNREACHABLE();
+  assert(!"unreachable");
   return 0;
 }
 
@@ -332,7 +358,7 @@ int DateCache::DaylightSavingsOffsetInMs(int64_t time_ms) {
 void DateCache::ProbeDST(int time_sec) {
   DST* before = NULL;
   DST* after = NULL;
-  ASSERT(before_ != after_);
+  assert(before_ != after_);
 
   for (int i = 0; i < kDSTSize; ++i) {
     if (dst_[i].start_sec <= time_sec) {
@@ -356,12 +382,12 @@ void DateCache::ProbeDST(int time_sec) {
             ? after_ : LeastRecentlyUsedDST(before);
   }
 
-  ASSERT(before != NULL);
-  ASSERT(after != NULL);
-  ASSERT(before != after);
-  ASSERT(InvalidSegment(before) || before->start_sec <= time_sec);
-  ASSERT(InvalidSegment(after) || time_sec < after->start_sec);
-  ASSERT(InvalidSegment(before) || InvalidSegment(after) ||
+  assert(before != NULL);
+  assert(after != NULL);
+  assert(before != after);
+  assert(InvalidSegment(before) || before->start_sec <= time_sec);
+  assert(InvalidSegment(after) || time_sec < after->start_sec);
+  assert(InvalidSegment(before) || InvalidSegment(after) ||
          before->end_sec < after->start_sec);
 
   before_ = before;
@@ -381,4 +407,4 @@ DateCache::DST* DateCache::LeastRecentlyUsedDST(DST* skip) {
   return result;
 }
 
-} }  // namespace v8::internal
+}

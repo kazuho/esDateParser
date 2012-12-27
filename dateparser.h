@@ -1,3 +1,6 @@
+// Copyright 2012 DeNA Co., Ltd.
+// modified under the following, original copyright
+
 // Copyright 2011 the V8 project authors. All rights reserved.
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -25,34 +28,34 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef V8_DATEPARSER_H_
-#define V8_DATEPARSER_H_
+#ifndef ESDATEPARSER_DATEPARSER_H
+#define ESDATEPARSER_DATEPARSER_H
 
-#include "allocation.h"
-#include "char-predicates-inl.h"
+#include <climits>
+#include <cstddef>
+extern "C" {
+#include <assert.h>
+#include <stdint.h>
+}
 
-namespace v8 {
-namespace internal {
+namespace esDateParser {
 
-class DateParser : public AllStatic {
+struct Date {
+  int year;
+  int month; // 0 = Jan
+  int day;
+  int hour;
+  int minute;
+  int second;
+  int millisecond;
+  int utc_offset; // in seconds, or -1 if no timezone specified
+};
+
+class DateParser {
  public:
-  // Parse the string as a date. If parsing succeeds, return true after
-  // filling out the output array as follows (all integers are Smis):
-  // [0]: year
-  // [1]: month (0 = Jan, 1 = Feb, ...)
-  // [2]: day
-  // [3]: hour
-  // [4]: minute
-  // [5]: second
-  // [6]: millisecond
-  // [7]: UTC offset in seconds, or null value if no timezone specified
   // If parsing fails, return false (content of output array is not defined).
   template <typename Char>
-  static bool Parse(Vector<Char> str, FixedArray* output, UnicodeCache* cache);
-
-  enum {
-    YEAR, MONTH, DAY, HOUR, MINUTE, SECOND, MILLISECOND, UTC_OFFSET, OUTPUT_SIZE
-  };
+  static bool Parse(const Char* str, size_t length, Date* output);
 
  private:
   // Range testing
@@ -61,7 +64,7 @@ class DateParser : public AllStatic {
   }
 
   // Indicates a missing value.
-  static const int kNone = kMaxInt;
+  static const int kNone = INT_MAX;
 
   // Maximal number of digits used to build the value of a numeral.
   // Remaining digits are ignored.
@@ -69,12 +72,12 @@ class DateParser : public AllStatic {
 
   // InputReader provides basic string parsing and character classification.
   template <typename Char>
-  class InputReader BASE_EMBEDDED {
+  class InputReader {
    public:
-    InputReader(UnicodeCache* unicode_cache, Vector<Char> s)
+    InputReader(const Char* s, size_t length)
         : index_(0),
           buffer_(s),
-          unicode_cache_(unicode_cache) {
+		  bufferLength_(length) {
       Next();
     }
 
@@ -82,7 +85,7 @@ class DateParser : public AllStatic {
 
     // Advance to the next character of the string.
     void Next() {
-      ch_ = (index_ < buffer_.length()) ? buffer_[index_] : 0;
+      ch_ = (index_ < bufferLength_) ? buffer_[index_] : 0;
       index_++;
     }
 
@@ -106,7 +109,7 @@ class DateParser : public AllStatic {
     int ReadWord(uint32_t* prefix, int prefix_size) {
       int len;
       for (len = 0; IsAsciiAlphaOrAbove(); Next(), len++) {
-        if (len < prefix_size) prefix[len] = AsciiAlphaToLower(ch_);
+        if (len < prefix_size) prefix[len] = ('A' <= ch_ && ch_ <= 'Z') ? ch_ + 'a' - 'A' : ch_;
       }
       for (int i = len; i < prefix_size; i++) prefix[i] = 0;
       return len;
@@ -122,7 +125,8 @@ class DateParser : public AllStatic {
     }
 
     bool SkipWhiteSpace() {
-      if (unicode_cache_->IsWhiteSpace(ch_)) {
+      // if (unicode_cache_->IsWhiteSpace(ch_))
+      if (ch_ == ' ' || ch_ == '\t') {
         Next();
         return true;
       }
@@ -143,7 +147,7 @@ class DateParser : public AllStatic {
     // Character testing/classification. Non-ASCII digits are not supported.
     bool Is(uint32_t c) const { return ch_ == c; }
     bool IsEnd() const { return ch_ == 0; }
-    bool IsAsciiDigit() const { return IsDecimalDigit(ch_); }
+    bool IsAsciiDigit() const { return '0' <= ch_ && ch_ <= '9'; }
     bool IsAsciiAlphaOrAbove() const { return ch_ >= 'A'; }
     bool IsAsciiSign() const { return ch_ == '+' || ch_ == '-'; }
 
@@ -152,9 +156,9 @@ class DateParser : public AllStatic {
 
    private:
     int index_;
-    Vector<Char> buffer_;
+    const Char* buffer_;
+	size_t bufferLength_;
     uint32_t ch_;
-    UnicodeCache* unicode_cache_;
   };
 
   enum KeywordType {
@@ -174,19 +178,19 @@ class DateParser : public AllStatic {
     int length() { return length_; }
 
     int number() {
-      ASSERT(IsNumber());
+      assert(IsNumber());
       return value_;
     }
     KeywordType keyword_type() {
-      ASSERT(IsKeyword());
+      assert(IsKeyword());
       return static_cast<KeywordType>(tag_);
     }
     int keyword_value() {
-      ASSERT(IsKeyword());
+      assert(IsKeyword());
       return value_;
     }
     char symbol() {
-      ASSERT(IsSymbol());
+      assert(IsSymbol());
       return static_cast<char>(value_);
     }
     bool IsSymbol(char symbol) {
@@ -202,7 +206,7 @@ class DateParser : public AllStatic {
       return tag_ == kSymbolTag && (value_ == '-' || value_ == '+');
     }
     int ascii_sign() {
-      ASSERT(IsAsciiSign());
+      assert(IsAsciiSign());
       return 44 - value_;
     }
     bool IsKeywordZ() {
@@ -286,7 +290,7 @@ class DateParser : public AllStatic {
   static int ReadMilliseconds(DateToken number);
 
   // KeywordTable maps names of months, time zones, am/pm to numbers.
-  class KeywordTable : public AllStatic {
+  class KeywordTable {
    public:
     // Look up a word in the keyword table and return an index.
     // 'pre' contains a prefix of the word, zero-padded to size kPrefixLength
@@ -306,7 +310,7 @@ class DateParser : public AllStatic {
     static const int8_t array[][kEntrySize];
   };
 
-  class TimeZoneComposer BASE_EMBEDDED {
+  class TimeZoneComposer {
    public:
     TimeZoneComposer() : sign_(kNone), hour_(kNone), minute_(kNone) {}
     void Set(int offset_in_hours) {
@@ -321,7 +325,7 @@ class DateParser : public AllStatic {
       return hour_ != kNone && minute_ == kNone && TimeComposer::IsMinute(n);
     }
     bool IsUTC() const { return hour_ == 0 && minute_ == 0; }
-    bool Write(FixedArray* output);
+    bool Write(Date* output);
     bool IsEmpty() { return hour_ == kNone; }
    private:
     int sign_;
@@ -329,7 +333,7 @@ class DateParser : public AllStatic {
     int minute_;
   };
 
-  class TimeComposer BASE_EMBEDDED {
+  class TimeComposer {
    public:
     TimeComposer() : index_(0), hour_offset_(kNone) {}
     bool IsEmpty() const { return index_ == 0; }
@@ -347,7 +351,7 @@ class DateParser : public AllStatic {
       return true;
     }
     void SetHourOffset(int n) { hour_offset_ = n; }
-    bool Write(FixedArray* output);
+    bool Write(Date* output);
 
     static bool IsMinute(int x) { return Between(x, 0, 59); }
     static bool IsHour(int x) { return Between(x, 0, 23); }
@@ -363,7 +367,7 @@ class DateParser : public AllStatic {
     int hour_offset_;
   };
 
-  class DayComposer BASE_EMBEDDED {
+  class DayComposer {
    public:
     DayComposer() : index_(0), named_month_(kNone), is_iso_date_(false) {}
     bool IsEmpty() const { return index_ == 0; }
@@ -376,7 +380,7 @@ class DateParser : public AllStatic {
       return false;
     }
     void SetNamedMonth(int n) { named_month_ = n; }
-    bool Write(FixedArray* output);
+    bool Write(Date* output);
     void set_iso_date() { is_iso_date_ = true; }
     static bool IsMonth(int x) { return Between(x, 1, 12); }
     static bool IsDay(int x) { return Between(x, 1, 31); }
@@ -404,6 +408,8 @@ class DateParser : public AllStatic {
 };
 
 
-} }  // namespace v8::internal
+}
 
-#endif  // V8_DATEPARSER_H_
+#include "dateparser-inl.h"
+
+#endif
