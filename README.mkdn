@@ -1,0 +1,15 @@
+<pre>
+#include "esdateparser.hpp"
+
+// parse date
+const char* date = "Wed, 26 Dec 2012 06:06:14 GMT";
+esDateParser::Date fields;
+if (! esDateParser::DateParser::Parse(date, strlen(date), &fields))
+  FAIL;
+
+// convert to primitives
+esDateParser::DateCache dateCache;
+double daysSinceEpoch = dateCache->DaysFromYearMonth(fields.year, fields.month) + fields.date - 1;
+if (std::isnan(daysSinceEpoch))
+  OUT_OF_RANGE;
+</pre>
